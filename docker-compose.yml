@@ -6,10 +6,34 @@ services:
     ports:
       - "6379:6379"
 
-  mock-backend:
+  mock-backend-1:
     build: ./mock-backend
+    environment:
+      - PORT=4000
+      - INSTANCE_ID=mock-backend-1
+
+  mock-backend-2:
+    build: ./mock-backend
+    environment:
+      - PORT=4000
+      - INSTANCE_ID=mock-backend-2
+
+  mock-backend-3:
+    build: ./mock-backend
+    environment:
+      - PORT=4000
+      - INSTANCE_ID=mock-backend-3
+
+  backend-nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/backend.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "4000:4000"
+      - "4000:80"
+    depends_on:
+      - mock-backend-1
+      - mock-backend-2
+      - mock-backend-3
 
   gateway-1:
     build: .
@@ -18,10 +42,10 @@ services:
       - INSTANCE_ID=gateway-1
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - BACKEND_TARGET=http://mock-backend:4000
+      - BACKEND_TARGET=http://backend-nginx:80
     depends_on:
       - redis
-      - mock-backend
+      - backend-nginx
 
   gateway-2:
     build: .
@@ -30,10 +54,10 @@ services:
       - INSTANCE_ID=gateway-2
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - BACKEND_TARGET=http://mock-backend:4000
+      - BACKEND_TARGET=http://backend-nginx:80
     depends_on:
       - redis
-      - mock-backend
+      - backend-nginx
 
   gateway-3:
     build: .
@@ -42,10 +66,10 @@ services:
       - INSTANCE_ID=gateway-3
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - BACKEND_TARGET=http://mock-backend:4000
+      - BACKEND_TARGET=http://backend-nginx:80
     depends_on:
       - redis
-      - mock-backend
+      - backend-nginx
 
   nginx:
     image: nginx:alpine

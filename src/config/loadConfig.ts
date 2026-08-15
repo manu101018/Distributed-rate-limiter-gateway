@@ -39,7 +39,7 @@ export function matchRoute(requestPath: string): RouteRule | null {
 
 export function getBackendTarget(): string {
   // env var wins so the same config/limits.json works both for local dev
-  // (localhost:4000) and Docker Compose (http://mock-backend:4000) without
+  // (localhost:4000) and Docker Compose (http://backend-nginx:80) without
   // editing the file per environment.
   return process.env.BACKEND_TARGET || loadConfig().backendTarget;
 }
