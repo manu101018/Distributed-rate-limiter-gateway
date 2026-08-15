@@ -1,3 +1,7 @@
+# Before reading below, have a look at the Grafana dashboard result for my test result of 1M requests over a contast burst.
+<img width="1177" height="713" alt="Screenshot 2026-08-15 at 10 59 54 PM" src="https://github.com/user-attachments/assets/049ad298-1d57-4bef-b27c-8fb514786e5c" />
+
+
 # Distributed Rate Limiter / API Gateway (TypeScript)
 
 A Node.js + Express + TypeScript API gateway that enforces distributed rate
