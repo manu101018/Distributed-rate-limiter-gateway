@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  mock-backend:
+    build: ./mock-backend
+    ports:
+      - "4000:4000"
+
+  gateway-1:
+    build: .
+    environment:
+      - PORT=3000
+      - INSTANCE_ID=gateway-1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BACKEND_TARGET=http://mock-backend:4000
+    depends_on:
+      - redis
+      - mock-backend
+
+  gateway-2:
+    build: .
+    environment:
+      - PORT=3000
+      - INSTANCE_ID=gateway-2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BACKEND_TARGET=http://mock-backend:4000
+    depends_on:
+      - redis
+      - mock-backend
+
+  gateway-3:
+    build: .
+    environment:
+      - PORT=3000
+      - INSTANCE_ID=gateway-3
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BACKEND_TARGET=http://mock-backend:4000
+    depends_on:
+      - redis
+      - mock-backend
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - gateway-1
+      - gateway-2
+      - gateway-3
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - gateway-1
+      - gateway-2
+      - gateway-3
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rate limiter — load tests</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #5b9fd4;
+      --ok: #3dd68c;
+      --warn: #f0b429;
+      --bad: #f07178;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 1.25rem 1.5rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { margin: 0 0 0.25rem; font-size: 1.25rem; font-weight: 650; }
+    header p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+    main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1.25rem;
+      padding: 1.25rem 1.5rem 2rem;
+      max-width: 1200px;
+    }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+    }
+    h2 { margin: 0 0 0.85rem; font-size: 0.85rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin: 0.7rem 0 0.3rem; }
+    input, select, button {
+      width: 100%;
+      font: inherit;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #121a24;
+      color: var(--text);
+      padding: 0.5rem 0.65rem;
+    }
+    .presets { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.35rem; }
+    .presets button {
+      width: auto;
+      padding: 0.3rem 0.55rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      background: #243044;
+    }
+    .presets button:hover, button.primary:hover { filter: brightness(1.12); }
+    button.primary {
+      margin-top: 1rem;
+      background: var(--accent);
+      color: #0b1520;
+      font-weight: 650;
+      border: none;
+      cursor: pointer;
+    }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); min-height: 1.3em; }
+    .status.running { color: var(--warn); }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--bad); }
+    .live {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .stat {
+      background: #121a24;
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+    }
+    .stat .k { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+    .stat .v { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+    .charts { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    .chart-box { height: 220px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: right; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 550; }
+    .empty { color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Load test dashboard</h1>
+    <p>Run tests against this gateway and chart the last 5 results.</p>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Run a test</h2>
+      <label for="total">Request count</label>
+      <input id="total" type="number" min="1" max="1000000" value="100" />
+      <div class="presets">
+        <button type="button" data-n="100">100</button>
+        <button type="button" data-n="1000">1k</button>
+        <button type="button" data-n="10000">10k</button>
+        <button type="button" data-n="50000">50k</button>
+        <button type="button" data-n="100000">100k</button>
+        <button type="button" data-n="1000000">1M</button>
+      </div>
+      <label for="clients">Clients (blank = auto ceil(n/5))</label>
+      <input id="clients" type="number" min="1" max="1000" placeholder="auto" />
+      <label for="path">Path</label>
+      <select id="path">
+        <option value="mixed">mixed</option>
+        <option value="/api/search">/api/search</option>
+        <option value="/api/ping">/api/ping</option>
+        <option value="/api/orders">/api/orders</option>
+      </select>
+      <button class="primary" id="run" type="button">Run load test</button>
+      <div class="status" id="runStatus"></div>
+      <div class="live">
+        <div class="stat"><div class="k">Allowed</div><div class="v" id="liveAllowed">—</div></div>
+        <div class="stat"><div class="k">Denied</div><div class="v" id="liveDenied">—</div></div>
+        <div class="stat"><div class="k">Deny %</div><div class="v" id="liveDeny">—</div></div>
+      </div>
+    </section>
+    <section>
+      <div class="panel" style="margin-bottom:1rem">
+        <h2>Last 5 runs</h2>
+        <div class="charts">
+          <div class="chart-box"><canvas id="chartRps"></canvas></div>
+          <div class="chart-box"><canvas id="chartDeny"></canvas></div>
+          <div class="chart-box"><canvas id="chartLatency"></canvas></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Results</h2>
+        <div id="tableWrap" class="empty">No runs yet. Start a test on the left, or use <code>npm run loadtest -- 100</code>.</div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const totalInput = document.getElementById('total');
+    const clientsInput = document.getElementById('clients');
+    const pathSelect = document.getElementById('path');
+    const runBtn = document.getElementById('run');
+    const runStatus = document.getElementById('runStatus');
+    const tableWrap = document.getElementById('tableWrap');
+
+    document.querySelectorAll('.presets button').forEach((btn) => {
+      btn.addEventListener('click', () => { totalInput.value = btn.dataset.n; });
+    });
+
+    const chartDefaults = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8b9bb4' } } },
+      scales: {
+        x: { ticks: { color: '#8b9bb4' }, grid: { color: '#2d3a4d' } },
+        y: { ticks: { color: '#8b9bb4' }, grid: { color: '#2d3a4d' }, beginAtZero: true },
+      },
+    };
+
+    const chartRps = new Chart(document.getElementById('chartRps'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: 'req/s', data: [], backgroundColor: '#5b9fd4' }] },
+      options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, title: { display: true, text: 'Throughput', color: '#e7ecf3' } } },
+    });
+    const chartDeny = new Chart(document.getElementById('chartDeny'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: 'deny %', data: [], backgroundColor: '#f0b429' }] },
+      options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, title: { display: true, text: 'Deny rate', color: '#e7ecf3' } } },
+    });
+    const chartLatency = new Chart(document.getElementById('chartLatency'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'p50 ms', data: [], borderColor: '#3dd68c', tension: 0.2 },
+          { label: 'p99 ms', data: [], borderColor: '#f07178', tension: 0.2 },
+        ],
+      },
+      options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, title: { display: true, text: 'Latency', color: '#e7ecf3' } } },
+    });
+
+    function labelFor(run, i) {
+      return '#' + (i + 1) + ' ' + Number(run.total).toLocaleString() + ' @ ' + new Date(run.completedAt).toLocaleTimeString();
+    }
+
+    function renderRuns(runs) {
+      const labels = runs.map(labelFor);
+      chartRps.data.labels = labels;
+      chartRps.data.datasets[0].data = runs.map((r) => r.throughputRps);
+      chartRps.update();
+      chartDeny.data.labels = labels;
+      chartDeny.data.datasets[0].data = runs.map((r) => r.denyPercent);
+      chartDeny.update();
+      chartLatency.data.labels = labels;
+      chartLatency.data.datasets[0].data = runs.map((r) => r.latency?.p50Ms ?? 0);
+      chartLatency.data.datasets[1].data = runs.map((r) => r.latency?.p99Ms ?? 0);
+      chartLatency.update();
+
+      if (!runs.length) {
+        tableWrap.className = 'empty';
+        tableWrap.innerHTML = 'No runs yet. Start a test on the left, or use <code>npm run loadtest -- 100</code>.';
+        return;
+      }
+      tableWrap.className = '';
+      tableWrap.innerHTML = '<table><thead><tr>' +
+        '<th>When</th><th>Requests</th><th>Clients</th><th>Path</th><th>req/s</th><th>200</th><th>429</th><th>Deny %</th><th>p50</th><th>p99</th><th>sec</th>' +
+        '</tr></thead><tbody>' +
+        runs.map((r) => '<tr>' +
+          '<td>' + new Date(r.completedAt).toLocaleString() + '</td>' +
+          '<td>' + Number(r.total).toLocaleString() + '</td>' +
+          '<td>' + r.clients + '</td>' +
+          '<td>' + r.path + '</td>' +
+          '<td>' + Math.round(r.throughputRps).toLocaleString() + '</td>' +
+          '<td>' + Number(r.allowed).toLocaleString() + '</td>' +
+          '<td>' + Number(r.denied).toLocaleString() + '</td>' +
+          '<td>' + r.denyPercent + '</td>' +
+          '<td>' + (r.latency?.p50Ms ?? '—') + '</td>' +
+          '<td>' + (r.latency?.p99Ms ?? '—') + '</td>' +
+          '<td>' + r.durationSeconds + '</td>' +
+          '</tr>').join('') +
+        '</tbody></table>';
+    }
+
+    async function loadResults() {
+      const res = await fetch('/dashboard/results');
+      const data = await res.json();
+      renderRuns(Array.isArray(data.runs) ? data.runs : []);
+    }
+
+    async function loadLiveStats() {
+      try {
+        const res = await fetch('/stats');
+        const s = await res.json();
+        document.getElementById('liveAllowed').textContent = Number(s.requests?.allowed ?? 0).toLocaleString();
+        document.getElementById('liveDenied').textContent = Number(s.requests?.denied ?? 0).toLocaleString();
+        document.getElementById('liveDeny').textContent = (s.requests?.denyPercent ?? 0) + '%';
+      } catch { /* gateway still starting */ }
+    }
+
+    let pollTimer = null;
+
+    async function pollUntilIdle() {
+      const res = await fetch('/dashboard/status');
+      const data = await res.json();
+      if (data.running) {
+        runBtn.disabled = true;
+        runStatus.className = 'status running';
+        runStatus.textContent = 'Test running…';
+        return false;
+      }
+      runBtn.disabled = false;
+      return true;
+    }
+
+    async function startPoll() {
+      if (pollTimer) return;
+      pollTimer = setInterval(async () => {
+        await loadLiveStats();
+        const idle = await pollUntilIdle();
+        if (idle) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          runStatus.className = 'status ok';
+          runStatus.textContent = 'Finished.';
+          await loadResults();
+        }
+      }, 1500);
+    }
+
+    runBtn.addEventListener('click', async () => {
+      const total = Number(totalInput.value);
+      const body = { total, path: pathSelect.value };
+      if (clientsInput.value) body.clients = Number(clientsInput.value);
+      runBtn.disabled = true;
+      runStatus.className = 'status running';
+      runStatus.textContent = 'Starting…';
+      try {
+        const res = await fetch('/dashboard/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          runStatus.className = 'status err';
+          runStatus.textContent = 'A test is already running.';
+          await startPoll();
+          return;
+        }
+        if (!res.ok) {
+          runBtn.disabled = false;
+          runStatus.className = 'status err';
+          runStatus.textContent = data.error || 'Failed to start test';
+          return;
+        }
+        await startPoll();
+      } catch (err) {
+        runBtn.disabled = false;
+        runStatus.className = 'status err';
+        runStatus.textContent = String(err);
+      }
+    });
+
+    loadResults();
+    loadLiveStats();
+    setInterval(loadLiveStats, 2000);
+    pollUntilIdle().then((idle) => { if (!idle) startPoll(); });
+  </script>
+</body>
+</html>

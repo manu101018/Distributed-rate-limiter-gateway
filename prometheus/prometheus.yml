@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Scrape each gateway instance's /metrics directly (not through Nginx),
+  # so per-instance labels stay meaningful and metrics scraping itself is
+  # never subject to the rate limiter.
+  - job_name: 'rate-limiter-gateway'
+    static_configs:
+      - targets:
+          - 'gateway-1:3000'
+          - 'gateway-2:3000'
+          - 'gateway-3:3000'
+        labels:
+          service: 'rate-limiter-gateway'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

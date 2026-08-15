@@ -1,0 +1,27 @@
+{
+  "backendTarget": "http://localhost:4000",
+  "defaultAlgorithm": "fixed-window",
+  "routes": [
+    {
+      "path": "/api/search",
+      "algorithm": "token-bucket",
+      "keyBy": "ip",
+      "bucketCapacity": 10,
+      "refillRatePerSec": 2
+    },
+    {
+      "path": "/api/orders",
+      "algorithm": "sliding-window",
+      "keyBy": "apiKey",
+      "windowSizeSec": 60,
+      "maxRequests": 30
+    },
+    {
+      "path": "/api",
+      "algorithm": "fixed-window",
+      "keyBy": "ip",
+      "windowSizeSec": 60,
+      "maxRequests": 100
+    }
+  ]
+}
